@@ -19,7 +19,7 @@ import torch
 from PIL import Image, ImageDraw, ImageFont
 import glob
 from utils.general import (CONFIG_DIR, FONT, LOGGER, Timeout, check_font, check_requirements, clip_coords,
-                           increment_path, is_ascii, is_chinese, try_except, xywh2xyxy, xyxy2xywh)
+                           increment_path,is_ascii, is_chinese, try_except, xywh2xyxy, xyxy2xywh)
 from utils.metrics import fitness
 import fitz
 import easyocr
@@ -494,54 +494,56 @@ def isint(num):
 
 def pdf_to_images(pdf_path):
     pdffile =glob.glob(pdf_path)
+    zoom = 2    # zoom factor
+    mat = fitz.Matrix(zoom, zoom)
     if (pdffile):
         count = 0
         for pdf in pdffile:
             doc = fitz.open(pdf)
             page = doc.load_page(page_id=0)  # number of page
             # print("what is pdf ", page)
-            pix = page.get_pixmap()
+            pix = page.get_pixmap(matrix = mat)
             count += 1
             output = "data/images/"+str(count)+".png"
             pix.save(output)
     else:
         print("No pdf file found")
-
-def data_in_json(lab,data_dic):
+# used for converting the crop image into text by using OCR 
+def data_in_json(data_dic):
     reader = easyocr.Reader(['en'])
     text = dict()
-    if len(lab) == 3:
-        print("Template Matched!")
-        for k,v in data_dic.items():
-            # img = cv2.imread(v)
-            # img = cv2.detailEnhance(v)
-            dat = v
-            # dat = grayscale
-            try:
-                resul = reader.readtext(dat,detail = 0)
-                print("what is in results ", resul)
-                if k == "Identity" or k == "identity":
-                    continue
-                elif k == "CGP" and len(resul) == 2 or len(resul) == 3 or len(resul) == 4:
-                    d = isint(resul[0])
-                    print("what is the data in d ", d)
-                    if d == "no_number":
-                        text[k] = resul[1]
+    for k,v in data_dic.items():
+        dat = v
+        try:
+            resul = reader.readtext(dat,detail = 0)
+            if k == "Identity" or k == "identity":
+                continue
+            elif k == "CGP" and len(resul) == 2 or len(resul) == 3 or len(resul) == 4:
+                d = isint(resul[0])
+                if d == "no_number":
+                    d1 = isint(resul[1])
+                    if d1 == "no_number":
+                        text[k] = resul[2]
                     else:
-                        text[k] = d
-                elif k == "CAA" and len(resul) == 2 or len(resul) == 3 or len(resul) == 4:
-                    d = isint(resul[0])
-                    if d == "no_number":
                         text[k] = resul[1]
-                    else:
-                        text[k] = d
                 else:
-                    text[k] = resul[0]
-            except:
-                print("Image Quality Not good")
-        with open("Output.json", "w") as outfile:
-            json.dump(text, outfile)
-        dictionary = json.dumps(text)
-        return dictionary
-    else:
-        return "Template Not Matched"
+                    text[k] = d
+            elif k == "CAA" and len(resul) == 2 or len(resul) == 3 or len(resul) == 4:
+                d = isint(resul[0])
+                if d == "no_number":
+                    d1 = isint(resul[1])
+                    if d1 == "no_number":
+                        text[k] = resul[2]
+                    else:
+                        text[k] = resul[1]
+                else:
+                    text[k] = d
+            else:
+                text[k] = resul[0]
+        except:
+            print("Image Quality Not good")
+    with open("HighSchool.json", "w") as outfile:
+        json.dump(text, outfile)
+    dictionary = json.dumps(text)
+    print(dictionary)
+    return dictionary

@@ -43,19 +43,20 @@ from utils.general import (LOGGER, check_file, check_img_size, check_imshow, che
                            increment_path, non_max_suppression, print_args, scale_coords, strip_optimizer, xyxy2xywh)
 from utils.plots import Annotator, colors, save_one_box , isint , pdf_to_images , data_in_json
 from utils.torch_utils import select_device, time_sync
-import easyocr
 import glob
 import cv2
 import numpy as np
 import json
 import fitz
-
+import pandas as pd
+import datetime
+import csv
 @torch.no_grad()
 
 def run(weights=ROOT / 'runs/train/exp/weights/best4.pt',  # model.pt path(s)
         source=ROOT / 'data/images',  # file/dir/URL/glob, 0 for webcam # file/dir/URL/glob, 0 for webcam
         data=ROOT / 'data/data4.yaml',  # dataset.yaml path
-        pdf=ROOT  / 'data/pdf/*.pdf',
+        highSchool=ROOT  / 'data/pdf/*.pdf',
         imgsz=(640, 640),  # inference size (height, width)
         conf_thres=0.25,  # confidence threshold
         iou_thres=0.45,  # NMS IOU threshold
@@ -71,7 +72,7 @@ def run(weights=ROOT / 'runs/train/exp/weights/best4.pt',  # model.pt path(s)
         augment=False,  # augmented inference
         visualize=False,  # visualize features
         update=False,  # update all models
-        project=ROOT / 'runs/detect',  # save results to project/name
+        project=ROOT / 'runs/detect/crops',  # save results to project/name
         name='exp',  # save results to project/name
         exist_ok=False,  # existing project/name ok, do not increment
         line_thickness=3,  # bounding box thickness (pixels)
@@ -80,7 +81,8 @@ def run(weights=ROOT / 'runs/train/exp/weights/best4.pt',  # model.pt path(s)
         half=False,  # use FP16 half-precision inference
         dnn=False,  # use OpenCV DNN for ONNX inference
         ):
-    pdf_to_images(str(pdf))
+    pdf_to_images(str(highSchool))
+    highschool = str(highSchool)
     source = str(source)
     save_img = not nosave and not source.endswith('.txt')  # save inference images
     is_file = Path(source).suffix[1:] in (IMG_FORMATS + VID_FORMATS)
@@ -89,7 +91,7 @@ def run(weights=ROOT / 'runs/train/exp/weights/best4.pt',  # model.pt path(s)
     if is_url and is_file:
         source = check_file(source)  # download
     # Directories
-    save_dir = increment_path(Path(project) / name, exist_ok=exist_ok)  # increment run
+    save_dir = increment_path(Path(project), exist_ok=exist_ok)  # increment run
     (save_dir / 'labels' if save_txt else save_dir).mkdir(parents=True, exist_ok=True)  # make dir
     # Load model
     device = select_device(device)
@@ -104,13 +106,14 @@ def run(weights=ROOT / 'runs/train/exp/weights/best4.pt',  # model.pt path(s)
         bs = len(dataset)  # batch_size
     else:
         dataset = LoadImages(source, img_size=imgsz, stride=stride, auto=pt)
-        print("what is in dataset ", dataset)
+        # print("what is in dataset ", dataset)
         bs = 1  # batch_size
     vid_path, vid_writer = [None] * bs, [None] * bs
-
+    
     # Run inference
     dlabels = list()
     data_dic = dict()
+
     model.warmup(imgsz=(1 if pt else bs, 3, *imgsz))  # warmup
     dt, seen = [0.0, 0.0, 0.0], 0
     for path, im, im0s, vid_cap, s in dataset:
@@ -143,7 +146,7 @@ def run(weights=ROOT / 'runs/train/exp/weights/best4.pt',  # model.pt path(s)
                 p, im0, frame = path, im0s.copy(), getattr(dataset, 'frame', 0)
 
             p = Path(p)  # to Path
-            save_path = str(save_dir / p.name)  # im.jpg
+            save_path = str(save_dir)  # im.jpg
             txt_path = str(save_dir / 'labels' / p.stem) + ('' if dataset.mode == 'image' else f'_{frame}')  # im.txt
             s += '%gx%g ' % im.shape[2:]  # print string
             gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
@@ -172,50 +175,37 @@ def run(weights=ROOT / 'runs/train/exp/weights/best4.pt',  # model.pt path(s)
                         label = None if hide_labels else (names[c] if hide_conf else f'{names[c]} {conf:.2f}')
                         annotator.box_label(xyxy, label, color=colors(c, True))
                         if save_crop:
-                            # applied threshold to convert the image into binary
                             ret,thresh2 = cv2.threshold(imc,127,255,cv2.THRESH_BINARY_INV)
-                            result= save_one_box(xyxy, thresh2, file=save_dir / 'crops' / names[c] / f'{p.stem}.jpg', BGR=True)
-                            data_dic[names[c]] = result 
-
-                        dlabels.append(names[c])
+                            # print("what is path", save_dir / 'crops' / names[c] / f'{p.stem}.jpg')
+                            
+                            result= save_one_box(xyxy, thresh2, file=save_dir / highschool + "_output" /  names[c] / f'{p.stem}.jpg', BGR=True)
+                            dlabels.append(names[c])
             im0 = annotator.result()
             if save_img:
                 if dataset.mode == 'image':
                     cv2.imwrite(save_path, im0)
     lab = set(dlabels)
-    # print("what is in data dictionary",data_dic)
-    # print("what is labels ", lab)
-    result_json = data_in_json(lab,data_dic)
-    print(result_json)
-
+    if len(lab) == 3:
+        print("template Match")
+        print('True')
+        dictionary ={
+             "Template_Matched" : "True",
+            }
+        # Serializing json 
+        json_object = json.dumps(dictionary, indent = 4)
+        # Writing to sample.json
+        with open("Template.json", "w") as outfile:
+            outfile.write(json_object)
+    else:
+        print("Template Not Match"+'False')
+        print("But Your file has been uploaded")
+   
 
 def parse_opt():
     parser = argparse.ArgumentParser()
     # parser.add_argument('--weights', nargs='+', type=str, default=ROOT / 'runs/train/exp/weights/best4.pt', help='model path(s)')
-    parser.add_argument('--pdf', type=str, default=ROOT / 'data/ex_01.pdf', help='file/dir/URL/glob, 0 for webcam')
+    parser.add_argument('--highSchool', type=str, default=ROOT / 'data/ex_01.pdf', help='file/dir/URL/glob, 0 for webcam')
     parser.add_argument('--imgsz', '--img', '--img-size', nargs='+', type=int, default=[640], help='inference size h,w')
-    # parser.add_argument('--conf-thres', type=float, default=0.25, help='confidence threshold')
-    # parser.add_argument('--iou-thres', type=float, default=0.45, help='NMS IoU threshold')
-    # parser.add_argument('--max-det', type=int, default=1000, help='maximum detections per image')
-    # parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
-    # parser.add_argument('--view-img', action='store_true', help='show results')
-    # parser.add_argument('--save-txt', action='store_true', help='save results to *.txt')
-    # parser.add_argument('--save-conf', action='store_true', help='save confidences in --save-txt labels')
-    # parser.add_argument('--save-crop', action='store_true', help='save cropped prediction boxes')
-    # parser.add_argument('--nosave', action='store_true', help='do not save images/videos')
-    # parser.add_argument('--classes', nargs='+', type=int, help='filter by class: --classes 0, or --classes 0 2 3')
-    # parser.add_argument('--agnostic-nms', action='store_true', help='class-agnostic NMS')
-    # parser.add_argument('--augment', action='store_true', help='augmented inference')
-    # parser.add_argument('--visualize', action='store_true', help='visualize features')
-    # parser.add_argument('--update', action='store_true', help='update all models')
-    # parser.add_argument('--project', default=ROOT / 'runs/detect', help='save results to project/name')
-    # parser.add_argument('--name', default='exp', help='save results to project/name')
-    # parser.add_argument('--exist-ok', action='store_true', help='existing project/name ok, do not increment')
-    # parser.add_argument('--line-thickness', default=3, type=int, help='bounding box thickness (pixels)')
-    # parser.add_argument('--hide-labels', default=False, action='store_true', help='hide labels')
-    # parser.add_argument('--hide-conf', default=False, action='store_true', help='hide confidences')
-    # parser.add_argument('--half', action='store_true', help='use FP16 half-precision inference')
-    # parser.add_argument('--dnn', action='store_true', help='use OpenCV DNN for ONNX inference')
     opt = parser.parse_args()
     opt.imgsz *= 2 if len(opt.imgsz) == 1 else 1  # expand
     print_args(FILE.stem, opt)
