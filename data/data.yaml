@@ -1,0 +1,9 @@
+names:
+- CAA
+- CGP
+- Id
+- Identity
+- identity
+nc: 5
+train: /kaggle/working/Marksheet-Data-Extraction-3/train/images
+val: /kaggle/working/Marksheet-Data-Extraction-3/valid/images
